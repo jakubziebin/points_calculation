@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Final, TypeAlias
+import matplotlib.pyplot as plt
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -34,7 +35,9 @@ class PassPointsHeader(Static):
 class CoordinateInput(Input):
     def __init__(self, coordinate_kind: str):
         super().__init__(
-            placeholder=PUT_VALUE_PLACEHOLDER + f" {coordinate_kind}", type="number"
+            placeholder=PUT_VALUE_PLACEHOLDER + f" {coordinate_kind}",
+            type="number",
+            max_length=4,
         )
 
 
@@ -55,11 +58,20 @@ class LastCalculationDisplay(Static):
         second_point: CoordinatesType,
         third_point: CoordinatesType,
         fourth_point: CoordinatesType,
-        result: CoordinatesType,
+        result: CoordinatesType | None = None,
+        *,
+        is_parallely: bool = False,
     ):
-        super().__init__(
-            renderable=f"Odcinek {first_point} - {second_point} i {third_point} - {fourth_point} przecinaja sie w -> {result}"
-        )
+        display_text: str = ""
+        if result is not None:
+            display_text = f"Odcinek {first_point} - {second_point} i {third_point} - {fourth_point} przecinaja sie w -> ({result[0] :.2f} {result[1] :.2f})"
+
+        if is_parallely and result is None:
+            display_text = f"Odcinek {first_point} - {second_point} i {third_point} - {fourth_point} są rownolegle lub wspolliniowe"
+        elif result is None and not is_parallely:
+            f"Odcinek {first_point} - {second_point} i {third_point} - {fourth_point} nie przecinaja sie"
+
+        super().__init__(renderable=display_text)
 
 
 class PointsApp(App):
@@ -122,7 +134,7 @@ class PointsApp(App):
                 "Wyczysc wartosci wejsciowe", id="clear-inputs-button", variant="error"
             )
         yield Static(
-            "Ostatnie przecinajace sie odcinki:", id="last-calculations-header"
+            "Ostatnie wyniki:", id="last-calculations-header"
         )
         yield VerticalScroll(id="last-calculations-container")
         yield Footer()
@@ -133,6 +145,8 @@ class PointsApp(App):
         coordinates_2: CoordinatesType,
         coordinates_3: CoordinatesType,
     ) -> int:
+        """Sprawdzanie orientacji."""
+
         determinant = (coordinates_2[1] - coordinates_1[1]) * (
             coordinates_3[0] - coordinates_2[0]
         ) - (coordinates_2[0] - coordinates_1[0]) * (
@@ -151,6 +165,8 @@ class PointsApp(App):
         coordinates_2: CoordinatesType,
         coordinates_3: CoordinatesType,
     ) -> bool:
+        """Sprawdza czy punkt leży na odcinku."""
+
         if max(coordinates_1[0], coordinates_3[0]) >= coordinates_2[0] >= min(
             coordinates_1[0], coordinates_3[0]
         ) and max(coordinates_1[1], coordinates_3[1]) >= coordinates_2[1] >= min(
@@ -166,6 +182,7 @@ class PointsApp(App):
         p2: CoordinatesType,
         q2: CoordinatesType,
     ) -> bool:
+        """Sprawdza czy odcinki się przecinają."""
         o1 = self._orientation(p1, q1, p2)
         o2 = self._orientation(p1, q1, q2)
         o3 = self._orientation(p2, q2, p1)
@@ -194,6 +211,14 @@ class PointsApp(App):
 
     @on(Button.Pressed, "#calculate-point-button")
     def intersection_point(self) -> None:
+        """
+        Funkcja wykonuje:
+        -----------------
+        1. Potwierdzenie przecięcia
+        2. Sprawdzanie czy odcinki są równoległe lub współniniowe
+        3. Wyznaczenie punktu przecięcia
+        """
+
         x1_1, y1_1 = self._x1_1_input.value, self._y1_1_input.value
         x2_1, y2_1 = self._x2_1_input.value, self._y2_1_input.value
 
@@ -214,7 +239,23 @@ class PointsApp(App):
 
         if not self._do_intersect(p1, q1, p2, q2):
             self.notify("Brak przeciecia")
+            self.query_one("#last-calculations-container").mount(
+                LastCalculationDisplay(p1, q1, p2, q2)
+            )
             self._clear_inputs()
+            plt.plot(
+                [float(x1_1), float(x2_1)],
+                [float(y1_1), float(y2_1)],
+                label="odcinek 1",
+                color="b",
+            )
+            plt.plot(
+                [float(x1_2), float(x2_2)],
+                [float(y1_2), float(y2_2)],
+                label="odcinek 2",
+                color="r",
+            )
+            plt.show()
             return
 
         a1 = q1[1] - p1[1]
@@ -228,16 +269,48 @@ class PointsApp(App):
 
         if determinant == 0:
             self.notify("Odcinki sa rownolegle lub wspolniowe")
+            self.query_one("#last-calculations-container").mount(
+                LastCalculationDisplay(p1, q1, p2, q2, is_parallely=True)
+            )
+            plt.plot(
+                [float(x1_1), float(x2_1)],
+                [float(y1_1), float(y2_1)],
+                label="odcinek 1",
+                color="b",
+            )
+            plt.plot(
+                [float(x1_2), float(x2_2)],
+                [float(y1_2), float(y2_2)],
+                label="odcinek 2",
+                color="r",
+            )
+            plt.show()
             self._clear_inputs()
             return
 
         x = (b2 * c1 - b1 * c2) / determinant
         y = (a1 * c2 - a2 * c1) / determinant
-        self.notify(f"Przecinaja sie w punkcie K o wspolrzednych: X: {x} Y: {y}")
+        self.notify(
+            f"Przecinaja sie w punkcie K o wspolrzednych: X: {x :.2f} Y: {y :.2f}"
+        )
         self.query_one("#last-calculations-container").mount(
             LastCalculationDisplay(p1, q1, p2, q2, (x, y))
         )
         self._clear_inputs()
+        plt.plot(
+            [float(x1_1), float(x2_1)],
+            [float(y1_1), float(y2_1)],
+            label="odcinek 1",
+            color="b",
+        )
+        plt.plot(
+            [float(x1_2), float(x2_2)],
+            [float(y1_2), float(y2_2)],
+            label="odcinek 2",
+            color="r",
+        )
+        plt.scatter(x, y, color="g")
+        plt.show()
 
     @on(Button.Pressed, "#clear-inputs-button")
     def clear_inputs_by_button(self) -> None:
