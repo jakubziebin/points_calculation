@@ -133,9 +133,7 @@ class PointsApp(App):
             yield Button(
                 "Wyczysc wartosci wejsciowe", id="clear-inputs-button", variant="error"
             )
-        yield Static(
-            "Ostatnie wyniki:", id="last-calculations-header"
-        )
+        yield Static("Ostatnie wyniki:", id="last-calculations-header")
         yield VerticalScroll(id="last-calculations-container")
         yield Footer()
 
@@ -209,6 +207,27 @@ class PointsApp(App):
         for input_ in inputs:
             input_.clear()
 
+    def find_overlap_segment(
+        self,
+        p1: CoordinatesType,
+        q1: CoordinatesType,
+        p2: CoordinatesType,
+        q2: CoordinatesType,
+    ) -> tuple[CoordinatesType, CoordinatesType] | None:
+        # Ensure p1 is the leftmost endpoint for the first segment
+        if p1[0] > q1[0] or (p1[0] == q1[0] and p1[1] > q1[1]):
+            p1, q1 = q1, p1
+        # Ensure p2 is the leftmost endpoint for the second segment
+        if p2[0] > q2[0] or (p2[0] == q2[0] and p2[1] > q2[1]):
+            p2, q2 = q2, p2
+
+        # Check if segments are overlapping
+        if self._on_segment(p1, p2, q1):
+            start = max(p1, p2)
+            end = min(q1, q2)
+            return start, end
+        return
+
     @on(Button.Pressed, "#calculate-point-button")
     def intersection_point(self) -> None:
         """
@@ -265,13 +284,12 @@ class PointsApp(App):
         a2 = q2[1] - p2[1]
         b2 = p2[0] - q2[0]
         c2 = a2 * p2[0] + b2 * p2[1]
+
         determinant = a1 * b2 - a2 * b1
 
         if determinant == 0:
-            self.notify("Odcinki sa rownolegle lub wspolniowe")
-            self.query_one("#last-calculations-container").mount(
-                LastCalculationDisplay(p1, q1, p2, q2, is_parallely=True)
-            )
+            self.notify("Odcinki są współiniowe")
+            first, second = self.find_overlap_segment(p1, q1, p2, q2)
             plt.plot(
                 [float(x1_1), float(x2_1)],
                 [float(y1_1), float(y2_1)],
@@ -284,12 +302,24 @@ class PointsApp(App):
                 label="odcinek 2",
                 color="r",
             )
+            plt.plot(
+                [float(first[0]), float(second[0])],
+                [float(first[1]), float(second[1])],
+                label="odcinek wspólny",
+                color="g",
+            )
+
+            plt.scatter(first[0], first[1], color="b", zorder=5)
+            plt.text(first[0], first[1], f"{first[0]} {first[1]}", ha="right")
+            plt.scatter(second[0], second[1], color="r", zorder=5)
+            plt.text(second[0], second[1], f"{second[0]} {second[1]}", ha="right")
             plt.show()
             self._clear_inputs()
             return
 
         x = (b2 * c1 - b1 * c2) / determinant
         y = (a1 * c2 - a2 * c1) / determinant
+
         self.notify(
             f"Przecinaja sie w punkcie K o wspolrzednych: X: {x :.2f} Y: {y :.2f}"
         )
